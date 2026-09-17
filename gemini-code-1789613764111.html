@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebase 驗證範例 (限 boxful.com.tw 網域)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f7f6;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      width: 320px;
+    }
+    h2 {
+      margin-top: 0;
+      text-align: center;
+    }
+    .input-group {
+      margin-bottom: 15px;
+    }
+    .input-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+    .input-group input {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    .btn-primary {
+      background-color: #007bff;
+      color: white;
+    }
+    .btn-google {
+      background-color: #4285f4;
+      color: white;
+    }
+    .btn-secondary {
+      background-color: #6c757d;
+      color: white;
+    }
+    .links {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+    .links a {
+      color: #007bff;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .links a:hover {
+      text-decoration: underline;
+    }
+    .hidden {
+      display: none;
+    }
+    .msg {
+      margin-top: 10px;
+      font-size: 13px;
+      color: red;
+      text-align: center;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <!-- 1. 登入畫面 -->
+    <div id="login-view">
+      <h2>帳號登入</h2>
+      <div class="input-group">
+        <label for="login-email">電子信箱</label>
+        <input type="email" id="login-email" placeholder="user@boxful.com.tw">
+      </div>
+      <div class="input-group">
+        <label for="login-password">密碼</label>
+        <input type="password" id="login-password" placeholder="請輸入密碼">
+      </div>
+      <button class="btn-primary" id="btn-login-email">電子信箱登入</button>
+      <button class="btn-google" id="btn-login-google">使用 Google 帳號登入</button>
+      <div class="links">
+        <a id="link-to-forgot">忘記密碼？</a>
+        <a id="link-to-register">註冊帳號</a>
+      </div>
+    </div>
+
+    <!-- 2. 註冊畫面 -->
+    <div id="register-view" class="hidden">
+      <h2>註冊帳號</h2>
+      <div class="input-group">
+        <label for="register-email">電子信箱</label>
+        <input type="email" id="register-email" placeholder="user@boxful.com.tw">
+      </div>
+      <div class="input-group">
+        <label for="register-password">設定密碼</label>
+        <input type="password" id="register-password" placeholder="請輸入密碼 (至少6位)">
+      </div>
+      <button class="btn-primary" id="btn-register-email">電子信箱註冊</button>
+      <button class="btn-google" id="btn-register-google">使用 Google 快速註冊</button>
+      <div class="links" style="justify-content: center;">
+        <a id="link-to-login-from-reg">已有帳號？返回登入</a>
+      </div>
+    </div>
+
+    <!-- 3. 忘記密碼畫面 -->
+    <div id="forgot-view" class="hidden">
+      <h2>重設密碼</h2>
+      <div class="input-group">
+        <label for="forgot-email">請輸入註冊時的電子信箱</label>
+        <input type="email" id="forgot-email" placeholder="user@boxful.com.tw">
+      </div>
+      <button class="btn-primary" id="btn-reset-password">發送重設密碼信件</button>
+      <div class="links" style="justify-content: center;">
+        <a id="link-to-login-from-forgot">返回登入</a>
+      </div>
+    </div>
+
+    <!-- 4. 登入完成畫面 -->
+    <div id="dashboard-view" class="hidden">
+      <h2>登入成功！</h2>
+      <p style="text-align: center;">歡迎，<br><span id="user-info" style="font-weight: bold;"></span></p>
+      <button class="btn-secondary" id="btn-logout">登出</button>
+    </div>
+
+    <!-- 訊息提示區域 -->
+    <div id="message" class="msg"></div>
+  </div>
+
+  <!-- 引入 Firebase SDK (Modular ESM 格式) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
+    import { 
+      getAuth, 
+      signInWithEmailAndPassword, 
+      createUserWithEmailAndPassword, 
+      sendEmailVerification,
+      sendPasswordResetEmail,
+      GoogleAuthProvider, 
+      signInWithPopup,
+      signOut,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js";
+
+    // 允許的指定網域
+    const ALLOWED_DOMAIN = "@boxful.com.tw";
+
+    // 本地專案 Firebase SDK 設定檔
+    const firebaseConfig = {
+      apiKey: "AIzaSyD31bfSapvdtnpQnqLfCRiliF8JU1-XJ-Y",
+      authDomain: "vendor-payroll.firebaseapp.com",
+      projectId: "vendor-payroll",
+      storageBucket: "vendor-payroll.firebasestorage.app",
+      messagingSenderId: "522687415381",
+      appId: "1:522687415381:web:71a0b3d73d967e1aa640dc",
+      measurementId: "G-V0GRGFXGQX"
+    };
+
+    // 初始化 Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    
+    // 設定 Google Auth Provider
+    const googleProvider = new GoogleAuthProvider();
+    // 提示 Google 選擇器優先選擇 boxful.com.tw 網域的帳號
+    googleProvider.setCustomParameters({
+      hd: "boxful.com.tw"
+    });
+
+    // DOM 畫面元素
+    const loginView = document.getElementById('login-view');
+    const registerView = document.getElementById('register-view');
+    const forgotView = document.getElementById('forgot-view');
+    const dashboardView = document.getElementById('dashboard-view');
+    const messageEl = document.getElementById('message');
+    const userInfoEl = document.getElementById('user-info');
+
+    // 顯示訊息輔助函式
+    function showMsg(msg, isSuccess = false) {
+      messageEl.style.color = isSuccess ? 'green' : 'red';
+      messageEl.textContent = msg;
+    }
+
+    // 切換視圖輔助函式
+    function switchView(viewToShow) {
+      showMsg(''); // 切換頁面時清除訊息
+      [loginView, registerView, forgotView, dashboardView].forEach(v => v.classList.add('hidden'));
+      viewToShow.classList.remove('hidden');
+    }
+
+    // 網域驗證檢查函式
+    function isAllowedDomain(email) {
+      return email && email.toLowerCase().endsWith(ALLOWED_DOMAIN);
+    }
+
+    // 頁面連結監聽
+    document.getElementById('link-to-register').addEventListener('click', () => switchView(registerView));
+    document.getElementById('link-to-forgot').addEventListener('click', () => switchView(forgotView));
+    document.getElementById('link-to-login-from-reg').addEventListener('click', () => switchView(loginView));
+    document.getElementById('link-to-login-from-forgot').addEventListener('click', () => switchView(loginView));
+
+    // 1. 信箱註冊 + 發送驗證信
+    document.getElementById('btn-register-email').addEventListener('click', async () => {
+      const email = document.getElementById('register-email').value.trim();
+      const password = document.getElementById('register-password').value;
+
+      if (!isAllowedDomain(email)) {
+        showMsg(`註冊失敗：僅允許使用 ${ALLOWED_DOMAIN} 結尾的信箱！`);
+        return;
+      }
+
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        // 發送電子信箱驗證信
+        await sendEmailVerification(userCredential.user);
+        showMsg("註冊成功！驗證信已發送至您的信箱，請先驗證後再登入。", true);
+        await signOut(auth); // 強制登出以等待驗證
+        switchView(loginView);
+      } catch (error) {
+        showMsg("註冊失敗: " + error.message);
+      }
+    });
+
+    // 2. 信箱登入 (檢查網域與信箱驗證)
+    document.getElementById('btn-login-email').addEventListener('click', async () => {
+      const email = document.getElementById('login-email').value.trim();
+      const password = document.getElementById('login-password').value;
+
+      if (!isAllowedDomain(email)) {
+        showMsg(`登入失敗：僅允許使用 ${ALLOWED_DOMAIN} 結尾的信箱！`);
+        return;
+      }
+
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        
+        if (!user.emailVerified) {
+          showMsg("您的電子信箱尚未驗證，請至信箱點擊驗證連結！");
+          await signOut(auth);
+          return;
+        }
+      } catch (error) {
+        showMsg("登入失敗: " + error.message);
+      }
+    });
+
+    // 3. Google 登入 / 註冊
+    const handleGoogleAuth = async () => {
+      try {
+        const result = await signInWithPopup(auth, googleProvider);
+        const user = result.user;
+
+        // 登入後再次確認帳號 Email 是否為指定網域
+        if (!isAllowedDomain(user.email)) {
+          showMsg(`存取被拒：僅允許使用 ${ALLOWED_DOMAIN} 帳號登入！`);
+          await signOut(auth); // 若不是指定網域則立刻強制登出
+        }
+      } catch (error) {
+        showMsg("Google 驗證失敗: " + error.message);
+      }
+    };
+
+    document.getElementById('btn-login-google').addEventListener('click', handleGoogleAuth);
+    document.getElementById('btn-register-google').addEventListener('click', handleGoogleAuth);
+
+    // 4. 重設密碼
+    document.getElementById('btn-reset-password').addEventListener('click', async () => {
+      const email = document.getElementById('forgot-email').value.trim();
+      
+      if (!email) {
+        showMsg("請輸入電子信箱");
+        return;
+      }
+
+      if (!isAllowedDomain(email)) {
+        showMsg(`僅能重設 ${ALLOWED_DOMAIN} 網域的帳號！`);
+        return;
+      }
+
+      try {
+        await sendPasswordResetEmail(auth, email);
+        showMsg("重設密碼信件已發送，請檢查您的信箱！", true);
+        setTimeout(() => switchView(loginView), 2500); // 2.5 秒後自動返回登入頁
+      } catch (error) {
+        showMsg("發送失敗: " + error.message);
+      }
+    });
+
+    // 5. 登出
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      await signOut(auth);
+    });
+
+    // 6. 監聽 Firebase 驗證狀態改變
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // 如果登入者的信箱不符合 boxful.com.tw 規範
+        if (!isAllowedDomain(user.email)) {
+          showMsg(`存取被拒：僅限 ${ALLOWED_DOMAIN} 帳號存取！`);
+          signOut(auth);
+          return;
+        }
+
+        // 使用者已登入且已通過電子信箱驗證
+        if (user.emailVerified) {
+          userInfoEl.textContent = user.email;
+          switchView(dashboardView);
+        } else {
+          switchView(loginView);
+        }
+      } else {
+        // 未登入
+        switchView(loginView);
+      }
+    });
+  </script>
+</body>
+</html>
